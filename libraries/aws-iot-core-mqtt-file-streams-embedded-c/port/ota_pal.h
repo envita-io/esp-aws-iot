@@ -279,6 +279,15 @@ OtaPalStatus_t otaPal_ActivateNewImage( AfrOtaJobDocumentFields_t * const pFileC
  * running app for a newer job. */
 const esp_partition_t * otaPal_GetStagedPartition( void );
 
+/* F-OTA-030: withdraw a staged candidate - point the boot slot back at the
+ * running app (the same step otaPal_CreateFileForRx() takes before a newer
+ * download erases the slot). Called when AWS rejects the terminal update of the
+ * job just staged because that execution was cancelled, removed or timed out:
+ * the bootloader must not start a release the operator withdrew. ESP_OK when
+ * the running app is the boot slot afterwards (also when nothing was staged).
+ * Writes otadata (flash): OTA task, internal-RAM stack only. */
+esp_err_t otaPal_UnstageCandidate( void );
+
 /**
  * @brief Attempt to set the state of the OTA update image.
  *

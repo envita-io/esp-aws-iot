@@ -757,6 +757,13 @@ const esp_partition_t * otaPal_GetStagedPartition( void )
     return staged_partition;
 }
 
+/* F-OTA-030: see ota_pal.h. The slot keeps the candidate's bytes; the next
+ * download erases them (otaPal_CreateFileForRx). */
+esp_err_t otaPal_UnstageCandidate( void )
+{
+    return _esp_ota_unstage_boot_slot();
+}
+
 /* Write a block of data to the specified file. */
 int16_t otaPal_WriteBlock( AfrOtaJobDocumentFields_t * const pFileContext,
                            uint32_t iOffset,
