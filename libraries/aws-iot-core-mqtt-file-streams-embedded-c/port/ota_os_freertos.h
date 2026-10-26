@@ -71,6 +71,7 @@ typedef enum OtaEvent
     OtaAgentEventResume,              /*!< @brief Event to resume suspended task */
     OtaAgentEventUserAbort,           /*!< @brief Event triggered by user to stop agent. */
     OtaAgentEventCheckActiveJob,      /*!< @brief F-OTA-025: ask AWS Jobs whether the job being downloaded is still the next pending execution (a cancel check). */
+    OtaAgentEventStageVerdict,        /*!< @brief F-OTA-030: AWS's verdict on the job just staged - unstage a withdrawn job, or re-send the terminal update. */
     OtaAgentEventShutdown,            /*!< @brief Event to trigger ota shutdown */
     OtaAgentEventMax                  /*!< @brief Last event specifier */
 } OtaEvent_t;
