@@ -56,3 +56,9 @@ PROPERTIES COMPILE_FLAGS -Wno-format)
 if (NOT CONFIG_MQTT_STREAMS_USE_CUSTOM_CONFIG)
 target_compile_definitions( ${COMPONENT_TARGET} PUBLIC MQTT_STREAMS_DO_NOT_USE_CUSTOM_CONFIG=1 )
 endif()
+
+# F-OTA-032: port/ota_pal.c calls the application's hyp_ota_unstage_candidate()
+# (declared in port/ota_pal.h). main's archive can precede this one on the link
+# line, so force the symbol undefined before any archive is scanned. There is no
+# weak default: an application without the helper fails to link.
+target_link_options(${COMPONENT_TARGET} INTERFACE "-Wl,--undefined=hyp_ota_unstage_candidate")

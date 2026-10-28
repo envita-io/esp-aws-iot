@@ -220,46 +220,28 @@ static void _esp_ota_ctx_close( AfrOtaJobDocumentFields_t * pFileContext )
     ota_ctx.cur_ota = 0;
 }
 
-/* F-OTA-023: if the bootloader is pointed at a slot other than the running app
- * (a staged candidate), point it back at the running app.
- *
- * Under CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE esp_ota_set_boot_partition() writes
- * the new otadata entry as ESP_OTA_IMG_NEW (esp_rewrite_ota_data ->
- * set_new_state_otadata), so after this the RUNNING app boots PENDING_VERIFY on
- * its next start and is accepted by the first-boot gate (WP4) like any other
- * image. That is the price of "a power cut mid-download boots the running app";
- * the alternative - leaving the boot slot on the candidate while it is erased -
- * boots nothing. Reads otadata (flash): callers run on the OTA task's
- * internal-RAM stack. */
+/* F-OTA-032: OTADemoTask internal stack. Preserve the stable running
+ * sector while invalidating candidate bytes and its otadata sector. */
 static esp_err_t _esp_ota_unstage_boot_slot( void )
 {
     const esp_partition_t * running = esp_ota_get_running_partition();
     const esp_partition_t * boot = esp_ota_get_boot_partition();
+    if( running == NULL || boot == NULL ) return ESP_ERR_INVALID_STATE;
 
-    if( ( running == NULL ) || ( boot == NULL ) )
+    const esp_partition_t * candidate = staged_partition;
+    if( candidate == NULL && boot->address != running->address ) candidate = boot;
+    /* No prior candidate: preserve legacy UNDEFINED-state download support.
+     * No boot metadata or image bytes are changed by this no-op path. */
+    if( candidate == NULL ) return ESP_OK;
+    esp_ota_img_states_t state;
+    if( esp_ota_get_state_partition( running, &state ) != ESP_OK ||
+        ( state != ESP_OTA_IMG_VALID && state != ESP_OTA_IMG_UNDEFINED ) )
+        return ESP_ERR_INVALID_STATE;
+    if( candidate != NULL )
     {
-        LogError( ( "Cannot read the boot/running partition" ) );
-        return ESP_FAIL;
+        esp_err_t err = hyp_ota_unstage_candidate( candidate );
+        if( err != ESP_OK ) return err;
     }
-
-    if( boot->address == running->address )
-    {
-        staged_partition = NULL;
-        return ESP_OK;
-    }
-
-    LogWarn( ( "A candidate is staged in the slot at 0x%" PRIx32 "; pointing the boot slot "
-               "back at the running app (0x%" PRIx32 ") before that slot is erased",
-               boot->address, running->address ) );
-
-    esp_err_t err = esp_ota_set_boot_partition( running );
-
-    if( err != ESP_OK )
-    {
-        LogError( ( "esp_ota_set_boot_partition(running) failed (%d); not erasing the staged slot", err ) );
-        return err;
-    }
-
     staged_partition = NULL;
     return ESP_OK;
 }
@@ -332,11 +314,8 @@ OtaPalStatus_t otaPal_CreateFileForRx( AfrOtaJobDocumentFields_t * const pFileCo
     LogInfo( ( "Writing to partition subtype %d at offset 0x%" PRIx32 "",
                update_partition->subtype, update_partition->address ) );
 
-    /* F-OTA-023: a newer job while a candidate is staged. The slot about to be
-     * erased may be the one the bootloader is pointed at; point it back at the
-     * running app FIRST, so a power cut anywhere in this download boots the
-     * image that is running now (the agent erased the candidate record before
-     * calling here). Only then erase. */
+    /* F-OTA-032: retire a prior candidate before starting another download.
+     * Keep its existing VALID/UNDEFINED entry even if esp_ota_begin fails. */
     if( _esp_ota_unstage_boot_slot() != ESP_OK )
     {
         return OtaPalRxFileCreateFailed;
@@ -757,8 +736,8 @@ const esp_partition_t * otaPal_GetStagedPartition( void )
     return staged_partition;
 }
 
-/* F-OTA-030: see ota_pal.h. The slot keeps the candidate's bytes; the next
- * download erases them (otaPal_CreateFileForRx). */
+/* F-OTA-032: see ota_unstage.c; a successful withdrawal makes the
+ * candidate unbootable and leaves the running acceptance unchanged. */
 esp_err_t otaPal_UnstageCandidate( void )
 {
     return _esp_ota_unstage_boot_slot();
